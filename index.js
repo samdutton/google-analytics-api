@@ -1,20 +1,41 @@
 const {google} = require('googleapis');
 const scopes = 'https://www.googleapis.com/auth/analytics.readonly';
-const jwt = new google.auth.JWT(process.env.CLIENT_EMAIL, null, process.env.PRIVATE_KEY, scopes);
-
+const keys = require('./keys.json');
+const jwt = new google.auth.JWT(keys.client_email, null, keys.private_key, scopes);
+const reporting = google.analyticsreporting('v4');
 const viewId = '62698320';
 
-async function getData() {
+
+async function getReports(reports) {
   await jwt.authorize();
-  const result = await google.analytics('v3').data.ga.get({
+  const request = {
+    'headers': {'Content-Type': 'application/json'},
     'auth': jwt,
-    'ids': 'ga:' + viewId,
-    'start-date': '30daysAgo',
-    'end-date': 'today',
-    'metrics': 'ga:pageviews',
-  });
+    'resource': reports,
+  };
+  return await reporting.reports.batchGet(request);
+};
 
-  console.log(result);
-}
+const basicReport = {
+  'reportRequests': [{
+    'viewId': viewId,
+    'dateRanges': [{'startDate': '2005-01-01', 'endDate': 'today'}],
+    'metrics': [{'expression': 'ga:pageviews'}],
+    'dimensions': [{'name': 'ga:pagePath'}],
+    'dimensionFilterClauses': [
+      {
+        'filters': [
+          {
+            'dimensionName': 'ga:pagePath',
+            'operator': 'EXACT',
+            'expressions': ['/getusermedia/'],
+          },
+        ],
+      },
+    ],
+  }],
+};
 
-getData();
+getReports(basicReport).
+  then((response) => console.dir(response.data.reports[0].data.totals[0].values)).
+  catch((error) => console.log('Error getting report:', error));
