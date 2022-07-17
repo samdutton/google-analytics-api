@@ -1,9 +1,11 @@
 const {google} = require('googleapis');
 const scopes = 'https://www.googleapis.com/auth/analytics.readonly';
 const keys = require('./keys.json');
+// console.log(keys);
 const jwt = new google.auth.JWT(keys.client_email, null, keys.private_key, scopes);
 const reporting = google.analyticsreporting('v4');
-const viewId = '62698320';
+// const viewId = '62698320';
+const viewId = '73862535';
 
 
 async function getReports(reports) {
