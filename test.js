@@ -96,20 +96,31 @@ async function getReports(auth) {
   const reportRequests = [];
   const paths = ['de/docs/privacy-sandbox/status', 'en/blog/100-web-moments'];
   for (const path of paths) {
-    reportRequest.dimensionFilterClauses[0].filters[0].expressions = path;
-    reportRequests.push(reportRequest);
-    console.log('>>>reportRequest: ', reportRequest);
+    const thisReportRequest = structuredClone(reportRequest);
+    thisReportRequest.dimensionFilterClauses[0].filters[0].expressions = path;
+    reportRequests.push(thisReportRequest);
   }
   const request = {
     'auth': auth,
     'headers': {'Content-Type': 'application/json'},
-    'resource': reportRequests,
+    'resource': {'reportRequests': reportRequests},
   };
+  console.log('>>> .filters[0]:',
+    request.resource.reportRequests[0].dimensionFilterClauses[0].filters[0]);
+  console.log('>>> .filters[0]:',
+    request.resource.reportRequests[1].dimensionFilterClauses[0].filters[0]);
   reporting.reports.batchGet(request).
-    then((response) => console.log(response.data.reports[0].data.totals)).
+    then((response) => handleResponse(response)).
     catch((error) => console.log('Error getting report:', error));
 };
 
 function start(auth) {
   getReports(auth);
+}
+
+function handleResponse(response) {
+  console.log(response.data.reports);
+  for (const report of response.data.reports) {
+    console.log(report.data.totals);
+  }
 }
