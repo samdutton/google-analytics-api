@@ -2,8 +2,9 @@ const fs = require('fs');
 const readline = require('readline');
 const {google} = require('googleapis');
 const reporting = google.analyticsreporting('v4');
-// const viewId = '62698320';
-const viewId = '73862535';
+
+const publications = require('./data/publications.json');
+// const publicationsDataWithoutAuthors = require('./data/publications-without-authors.json');
 
 const SCOPES = 'https://www.googleapis.com/auth/analytics.readonly';
 
@@ -11,23 +12,6 @@ const SCOPES = 'https://www.googleapis.com/auth/analytics.readonly';
 // created automatically when the authorization flow completes for the first
 // time.
 const TOKEN_PATH = 'token.json';
-
-const reportRequest = {
-  'viewId': viewId,
-  'dateRanges': [{'startDate': '2005-01-01', 'endDate': 'today'}],
-  'metrics': [{'expression': 'ga:pageviews'}],
-  'dimensions': [{'name': 'ga:pagePath'}],
-  'dimensionFilterClauses': [
-    {
-      'filters': [
-        {
-          'dimensionName': 'ga:pagePath',
-          'operator': 'PARTIAL',
-        },
-      ],
-    },
-  ],
-};
 
 // Load client secrets from a local file.
 fs.readFile('credentials.json', (err, content) => {
@@ -48,7 +32,7 @@ function authorize(credentials, callback) {
   const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
   /* eslint-enable */
 
-  // Check if we have previously stored a to˝n.
+  // Check if we have previously stored a token.
   fs.readFile(TOKEN_PATH, (err, token) => {
     if (err) return getNewToken(oAuth2Client, callback);
     oAuth2Client.setCredentials(JSON.parse(token));
@@ -92,51 +76,86 @@ function getNewToken(oAuth2Client, callback) {
  *
  * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
  */
-async function getReports(auth, paths) {
+async function getReports(auth, publicationsBatch) {
   const reportRequests = [];
-  for (const path of paths) {
-    const thisReportRequest = structuredClone(reportRequest);
-    thisReportRequest.dimensionFilterClauses[0].filters[0].expressions = path;
-    reportRequests.push(thisReportRequest);
+  for (const publication of publicationsBatch) {
+    const reportRequest = {
+      'viewId': publication.viewId,
+      'dateRanges': [{'startDate': '2005-01-01', 'endDate': 'today'}],
+      'metrics': [{'expression': 'ga:pageviews'},
+        {'expression': 'ga:uniquePageviews'},
+        {'expression': 'ga:avgTimeOnPage'},
+        {'expression': 'ga:entrances'},
+        {'expression': 'ga:bounceRate'},
+        {'expression': 'ga:exitRate'}],
+      'dimensions': [{'name': 'ga:pagePath'}],
+      'dimensionFilterClauses': [
+        {
+          'filters': [
+            {
+              'dimensionName': 'ga:pagePath',
+              'operator': 'PARTIAL',
+              'expressions': publication.path,
+            },
+          ],
+        },
+      ],
+    };
+    // console.log(reportRequest.dimensionFilterClauses[0].filters[0]);
+    reportRequests.push(reportRequest);
   }
+
+//  console.log('>>> reportRequests:', reportRequests);
+
   const request = {
     'auth': auth,
     'headers': {'Content-Type': 'application/json'},
     'resource': {'reportRequests': reportRequests},
   };
-  // console.log('>>> .filters[0]:',
-  //   request.resource.reportRequests[0].dimensionFilterClauses[0].filters[0]);
-  // console.log('>>> .filters[0]:',
-  //   request.resource.reportRequests[1].dimensionFilterClauses[0].filters[0]);
   reporting.reports.batchGet(request).
     then((response) => handleResponse(response)).
     catch((error) => console.log('\nError getting report:', error));
-};
+}
 
-const allPaths = [
-  'de/docs/privacy-sandbox/status',
-  'en/blog/100-web-moments',
-  'en/blog/aligning-input-events',
-  'zh/blog/new-in-devtools-102',
-  'es/blog/new-in-devtools-104',
-  'es/blog/new-in-devtools-94',
-  'en/docs/web-platform/origin-trials',
-  'en/articles/authenticate-secure-payment-confirmation',
-  'de/docs/privacy-sandbox/attribution-reporting-introduction',
-  'en/blog/abortable-fetch',
-];
-
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 5; // Max number of requests for batchGet().
 
 function start(auth) {
-  for (let i = 0; i < allPaths.length; i += BATCH_SIZE) {
-    const paths = allPaths.slice(i, i + BATCH_SIZE);
-    getReports(auth, paths);
+  for (let i = 0; i < 10; i += BATCH_SIZE) {
+    const publicationsBatch = publications.slice(i, i + BATCH_SIZE);
+    // console.log('>>>> publicationsBatch', publicationsBatch);
+    getReports(auth, publicationsBatch);
   }
 }
 
 function handleResponse(response) {
-  for (const report of response.data.reports) {
-    console.log(report.data.rows[0].dimensions[0], report.data.totals[0].values[0]);
+  try {
+    for (const report of response.data.reports) {
+      if (report.data.rows) {
+        console.log('\nPath:', report.data.rows[0].dimensions[0]);
+        console.log('Metrics:', report.data.rows[0].metrics);
+      } else {
+        console.log('\nNo rows. Report:', report, 'Totals;', report.data.totals[0], '\n');
+      }
+      // console.log(report.data.rows[0].dimensions[0], report.data.totals[0].values[0]);
+    }
+  } catch (error) {
+    // const reports = response.data.reports;
+    console.error('>>> Error getting report:', error);
+    // console.log(response.data.reports);
+    // for (const report of reports) {
+    //   console.log(report.data.rows[0], report.data.totals[0]);
+    // }
   }
 }
+
+// Convert decimal time to hh:mm:ss
+// e.g. convert 123.3 to 2:03
+// function toHoursMinutesSeconds(decimalSeconds) {
+//   const hours = Math.floor(decimalSeconds/3600);
+//   const mins = Math.floor((decimalSeconds - hours * 3600)/60);
+//   const secs = Math.floor(decimalSeconds % 60);
+//   if (secs < 10) {
+//     secs = '0' + secs;
+//   };
+//   return hours + '' + mins + ':' + secs;
+// }
